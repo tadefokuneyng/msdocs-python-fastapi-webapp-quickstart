@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block title %}Add Employee{% endblock %}
+
+{% block content %}
+<div class="col-md-6 offset-md-3">
+    <h2>Add Employee</h2>
+    <form method="post" action="/employees/add">
+        <div class="form-group mb-3">
+            <label for="name">Name</label>
+            <input type="text" id="name" name="name" class="form-control" required>
+        </div>
+        <div class="form-group mb-3">
+            <label for="position">Position</label>
+            <input type="text" id="position" name="position" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-success">Add</button>
+    </form>
+</div>
+{% endblock %}

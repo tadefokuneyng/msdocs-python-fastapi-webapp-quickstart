@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% block title %}Employees{% endblock %}
+
+{% block content %}
+<h2>Employee List</h2>
+
+<!-- Add Employee Button -->
+<a href="/employees/add" class="btn btn-success mb-3">Add Employee</a>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Position</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for employee in employees %}
+        <tr>
+            <td>{{ employee.id }}</td>
+            <td>{{ employee.name }}</td>
+            <td>{{ employee.position }}</td>
+            <td>
+                <!-- Update Employee Button -->
+                <a href="/employees/{{ employee.id }}/update" class="btn btn-primary btn-sm">Update</a>
+
+                <!-- Delete Employee Form -->
+                <form method="post" action="/employees/{{ employee.id }}/delete" style="display: inline;">
+                    <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Pagination Controls -->
+<nav>
+    <ul class="pagination">
+        <li class="page-item {% if not previous %}disabled{% endif %}">
+            <a class="page-link" href="/employees?page={{ previous }}">Previous</a>
+        </li>
+        <li class="page-item {% if not next %}disabled{% endif %}">
+            <a class="page-link" href="/employees?page={{ next }}">Next</a>
+        </li>
+    </ul>
+</nav>
+
+{% endblock %}

@@ -3,3 +3,29 @@ uvicorn
 gunicorn
 jinja2
 python-multipart
+
+# Pydantic for data validation and settings management
+pydantic
+
+# Requests for making HTTP requests
+requests
+
+# BeautifulSoup for parsing HTML
+beautifulsoup4
+
+# Google Cloud libraries
+google-cloud-storage
+google-cloud-vision
+
+# OpenAI for interacting with OpenAI's API
+openai
+
+# python-dotenv for managing environment variables
+python-dotenv
+
+passlib[argon2]
+jwt
+python-multipart
+itsdangerous
+sqlmodel
+pyodbc
