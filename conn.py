@@ -2,15 +2,15 @@
 Connects to a SQL database using pyodbc
 """
 import pyodbc
-SERVER = 'NG3523819W1'
+SERVER = 'localhost'
 DATABASE = 'eyregtech'
-USERNAME = 'eyregtech'
-PASSWORD = '@DigitalEng123'
+USERNAME = 'sa'
+PASSWORD = 'Password123!'
 connectionString = f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD};TrustServerCertificate=yes'
 conn = pyodbc.connect(connectionString)
 SQL_QUERY = """
 SELECT 
-TOP 5 id, name, position from Employees;
+TOP 5 id, name, position from employee;
 """
 cursor = conn.cursor()
 cursor.execute(SQL_QUERY)

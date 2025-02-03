@@ -9,9 +9,17 @@ from google.cloud import vision_v1
 from google.cloud.vision_v1 import types
 from openai import OpenAI
 from dotenv import load_dotenv
+
+
+import pytesseract
+from pdf2image import convert_from_path
+from PIL import Image
+
 load_dotenv()
 
-llm = OpenAI()
+llm = OpenAI(
+    # api_key=os.getenv("OPENAI_API_KEY"),    
+)
 os.environ["GCLOUD_PROJECT"] = "eyailab"
 
 
@@ -155,29 +163,23 @@ def extract_rules(circular: Circular) -> Rules:
 
 if __name__ == '__main__':
     # URL of the page to scrape
-    url = "https://www.cbn.gov.ng/documents/circulars.asp"
+    url = "https://www.cbn.gov.ng/api/GetAllCirculars?format=json"
 
     # Send a GET request to the page
     response = requests.get(url)
     response.raise_for_status()  # Check that the request was successful
 
-    # Parse the page content with BeautifulSoup
-    soup = BeautifulSoup(response.content, 'html.parser')
-
-
     # Find all circular entries
-    circular_entries = soup.select('tr.dbasetable')[1:10]  # Select the first 10 entries
+    circular_entries = response.json()[0:1] # Select the first 10 entries
+    # print(circular_entries)
 
     # Extract and print the details of the last 10 circulars
     circular = Circular
     for entry in circular_entries:
-        ref = entry.td.text.strip()
-        link = entry.select_one('td a')
-        linkHref = 'https://www.cbn.gov.ng' + link.get('href').strip()
-        linkText = link.text.strip()
-        published_date = entry.select_one('#publishedDt').text.strip()
-        date_pattern = r"Published (\d{1,2}/\d{1,2}/\d{4})"
-        date_str = re.search(date_pattern, published_date).group(1)
+        ref = entry.get('refNo')
+        linkHref = 'https://www.cbn.gov.ng' + entry.get('link')
+        linkText = entry.get('title')
+        date_str = entry.get('documentDate')
 
         file_name = linkHref.split('/')[-1]
         safe_file_name = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', file_name)
@@ -186,21 +188,33 @@ if __name__ == '__main__':
         response.raise_for_status()  # Ensure the request was successful
 
         # Save the PDF to a file
-        #pdf_path = 'cbn/' + safe_file_name
-        #with open(pdf_path, "wb") as file:
-        #    content = response.content
-        #    file.write(content)
-        #pdf_url = upload_to_gcs(pdf_path, safe_file_name)
+        pdf_path = 'app/static/cbn/' + safe_file_name
+        # with open(pdf_path, "wb") as file:
+        #   content = response.content
+        #   file.write(content)
+        pdf_url = '/static/cbn/' + safe_file_name
+        # pdf_url = upload_to_gcs(pdf_path, safe_file_name)
 
         #This is the one I am using
-        pdf_url = upload_content_to_gcs(response.content, safe_file_name)
-        text = extract_text_from_pdf(pdf_url)
+        # pdf_url = upload_content_to_gcs(response.content, safe_file_name)
+        # text = extract_text_from_pdf(pdf_url)
+
+        # Convert PDF pages to images
+        images = convert_from_path(pdf_path)
+
+        # Extract text from each image
+        text = ""
+        for i, image in enumerate(images):
+            text += f"\n--- Page {i+1} ---\n"
+            text += pytesseract.image_to_string(image)
+
+        # Print or save extracted text
 
         print(f"Title: {ref}")
         print(f"Link: {linkHref}")
         print(f"Description: {linkText}")
         print(f"Published Date: {date_str}")
-        #print(f"Content: {text}")
+        print(f"Content: {text}")
         print("------")
 
         circular.reference = ref

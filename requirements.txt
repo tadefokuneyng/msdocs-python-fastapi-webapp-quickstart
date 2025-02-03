@@ -28,3 +28,7 @@ python-multipart
 itsdangerous
 sqlmodel
 pyodbc
+
+pytesseract
+pdf2image
+pillow
