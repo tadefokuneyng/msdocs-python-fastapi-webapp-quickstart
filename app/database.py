@@ -1,11 +1,12 @@
+import os
 from sqlmodel import SQLModel, create_engine, Session
 
 # Define your SQL Server connection URL
 # DATABASE_URL = "mssql+pyodbc://eyregtech:DigitalEng123@NG3523819W1/eyregtech?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
-SERVER = 'localhost'
-DATABASE = 'eyregtech'
-USERNAME = 'sa'
-PASSWORD = 'Password123!'
+SERVER = os.getenv("DB_SERVER"),
+DATABASE = os.getenv("DB_NAME"),
+USERNAME = os.getenv("DB_USERNAME"),
+PASSWORD = os.getenv("DB_PASSWORD"),
 # connectionString = f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={SERVER};DATABASE={DATABASE};UID={USERNAME};PWD={PASSWORD};TrustServerCertificate=yes'
 DATABASE_URL = f"mssql+pyodbc://{USERNAME}:{PASSWORD}@{SERVER}/{DATABASE}?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
 # Create the SQLAlchemy engine
