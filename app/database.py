@@ -1,6 +1,7 @@
 import os
 from sqlmodel import SQLModel, create_engine, Session
-
+from dotenv import load_dotenv
+load_dotenv()
 # Define your SQL Server connection URL
 # DATABASE_URL = "mssql+pyodbc://eyregtech:DigitalEng123@NG3523819W1/eyregtech?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes"
 SERVER = os.getenv('DB_SERVER')
