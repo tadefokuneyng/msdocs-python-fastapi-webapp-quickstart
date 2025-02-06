@@ -189,9 +189,9 @@ if __name__ == '__main__':
 
         # Save the PDF to a file
         pdf_path = 'app/static/cbn/' + safe_file_name
-        # with open(pdf_path, "wb") as file:
-        #   content = response.content
-        #   file.write(content)
+        with open(pdf_path, "wb") as file:
+          content = response.content
+          file.write(content)
         pdf_url = '/static/cbn/' + safe_file_name
         # pdf_url = upload_to_gcs(pdf_path, safe_file_name)
 
