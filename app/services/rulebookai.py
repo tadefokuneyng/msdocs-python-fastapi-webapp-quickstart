@@ -3,10 +3,7 @@ from pydantic import BaseModel
 from typing import Literal
 import re
 import requests
-from google.cloud import storage
 import os
-from google.cloud import vision_v1
-from google.cloud.vision_v1 import types
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -15,11 +12,6 @@ from datetime import datetime
 
 import pytesseract
 from pdf2image import convert_from_path
-
-from app.database import get_db
-from app.models import AgentLog
-import threading
-
 
 load_dotenv()
 
@@ -34,13 +26,11 @@ RULEBOOK_API_AUTH_PASSWORD = os.getenv("RULEBOOK_API_AUTH_PASSWORD")
 RULEBOOK_API_INVENTORY_URL = os.getenv("RULEBOOK_API_INVENTORY_URL")
 RULEBOOK_API_AI_LOG_URL = os.getenv("RULEBOOK_API_AI_LOG_URL")
 RULEBOOK_API_AUTH_OTP = os.getenv("RULEBOOK_API_AUTH_OTP")
-RULEBOOK_API_KEY = os.getenv("RULEBOOK_API_KEY")
 
 BASE_URL = os.getenv("BASE_URL")
 
 # Create a TTL cache with a single item
 token_cache = Cache("./.cache/auth")
-circulars_run_cache = Cache("./.cache/run/circulars")
 
 def set_auth(auth):
     expires_at = datetime.strptime(auth["expires"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -52,14 +42,6 @@ def set_auth(auth):
 
 def get_token():
     return token_cache.get("token")  # Returns None if expired or not set
-
-def set_run_status(type, id):
-    if type == 'circulars':
-        circulars_run_cache.set("id", id)  # Set with expiration time
-
-def get_run_status(type):
-    if type == 'circulars':
-        return circulars_run_cache.get("id")  # Returns None if expired or not set
 
 class Circular:
     reference:str
@@ -100,80 +82,6 @@ class Regulation(BaseModel):
     last_ammend_date:str
     regulatory_status:Literal['ACTIVE', 'REPEALED', 'SUPERSEDED']
     sections: list[Section]
- 
-def upload_to_gcs(pdf_path, destination_blob_name):
-    storage_client = storage.Client()
-    bucket_name = 'eyailab-cbn'
-    bucket = storage_client.bucket(bucket_name)
-    """Uploads a file to Google Cloud Storage and returns the public URL."""
-    blob = bucket.blob(destination_blob_name)
-    #generation_match_precondition = 0
-    #blob.upload_from_filename(pdf_path, if_generation_match=generation_match_precondition)
-    blob.upload_from_filename(pdf_path)
-    # Make the blob publicly accessible
-    blob.make_public()
-    print(
-        f"File {pdf_path} uploaded to {destination_blob_name}."
-    )
-    # Get the GCS URI
-    gcs_uri = f"gs://{bucket_name}/{destination_blob_name}"
-    return gcs_uri
-
-def upload_content_to_gcs(content, destination_blob_name):
-    storage_client = storage.Client()
-    bucket_name = 'eyailab-cbn'
-    bucket = storage_client.bucket(bucket_name)
-    """Uploads a file to Google Cloud Storage and returns the public URL."""
-    blob = bucket.blob(destination_blob_name)
-    #generation_match_precondition = 0
-    #blob.upload_from_filename(pdf_path, if_generation_match=generation_match_precondition)
-    blob.upload_from_string(content)
-    # Make the blob publicly accessible
-    blob.make_public()
-    print(
-        f"File uploaded to {destination_blob_name}."
-    )
-    # Get the GCS URI
-    gcs_uri = f"gs://{bucket_name}/{destination_blob_name}"
-    return gcs_uri
-
-def extract_text_from_pdf(pdf_url):
-    # Set up the Vision API client
-    client = vision_v1.ImageAnnotatorClient()
-    page_limit = 5
-
-    # Construct the request
-    input_config = types.InputConfig(
-        gcs_source=types.GcsSource(uri=pdf_url),
-        mime_type='application/pdf'
-    )
-    feature = types.Feature(type=vision_v1.Feature.Type.DOCUMENT_TEXT_DETECTION)
-
-    extracted_text = ""
-    page = 1
-    while True:
-        # Create the file request
-        file_request = vision_v1.types.AnnotateFileRequest(
-            input_config=input_config,
-            features=[feature],
-            pages=list(range(page, page + page_limit))
-        )
-        # Batch the requests
-        batch_request = vision_v1.types.BatchAnnotateFilesRequest(requests=[file_request])
-        # Make the request to the Vision API
-        response = client.batch_annotate_files(request=batch_request)
-        # Extract the text from the response
-        if not response.responses:
-            break
-        for file_response in response.responses:
-            for page_response in file_response.responses:
-                if page_response.full_text_annotation.text:
-                    extracted_text += page_response.full_text_annotation.text
-        if len(file_response.responses) < page_limit:
-            break
-        page += page_limit
-    
-    return extracted_text
 
 def extract_rules(circular: Circular) -> Rules:
   prompt = """
@@ -238,10 +146,10 @@ def extract_rules(circular: Circular) -> Rules:
   return completion.choices[0].message.parsed
 
 def do_main():
-    #token = get_token()  # Should return "Thisistokenstr"
-    #if token == None:
-    #    request_auth()
-    #    token = get_token()
+    token = get_token()  # Should return "Thisistokenstr"
+    if token == None:
+        request_auth()
+        token = get_token()
     # URL of the page to scrape
     url = "https://www.cbn.gov.ng/api/GetAllCirculars?format=json"
 
@@ -250,29 +158,10 @@ def do_main():
     response.raise_for_status()  # Check that the request was successful
 
     # Find all circular entries
-    all_entries = response.json()
-    if not all_entries:
-        raise ValueError("No circulars found")
-    
-    last_run_id = get_run_status('circulars')
-    if last_run_id == None:
-        last_run_id = all_entries[0].get('id')
-        set_run_status('circulars', last_run_id)
-        raise ValueError("System is running for the first time, next available circular will be processed")
+    circular_entries = response.json()[0:1] # Select the first 10 entries
+    # print(circular_entries)
 
-    new_entries = []
-    for entry in all_entries:
-        if entry.get('id') == last_run_id:
-            break
-        new_entries.append(entry)
-    new_entries.reverse()
-
-    circular_entries = new_entries[0:1] # Select the first 10 entries
-
-    if not new_entries:
-        raise ValueError("No new circulars found")
-
-    
+    # Extract and print the details of the last 10 circulars
     circular = Circular
     for entry in circular_entries:
         ref = entry.get('refNo')
@@ -329,25 +218,24 @@ def do_main():
         payload = {
             "title": regulation.title,
             "reference": regulation.reference,
-            #"link": BASE_URL + regulation.link,
-            "link": linkHref,
+            "link": BASE_URL + regulation.link,
             "type": regulation.type,
             "description": regulation.description,
-            "releaseDate": format_date_as_string(regulation.release_date),  # Format release_date as yyyy-mm-dd
-            "effectiveDate": format_date_as_string(regulation.effective_date or regulation.release_date),
-            "lastAmmendDate": format_date_as_string(regulation.last_ammend_date or regulation.release_date),
+            "releaseDate": datetime.strptime(regulation.release_date, date_format).strftime("%Y-%m-%d"),
+            "effectiveDate": datetime.strptime(regulation.effective_date or regulation.release_date, date_format).strftime("%Y-%m-%d"),
+            "lastAmmendDate": datetime.strptime(regulation.last_ammend_date or regulation.release_date, date_format).strftime("%Y-%m-%d"),
             "regulatoryStatus": regulation.regulatory_status,
             "aiRegulationSectionDtos": [
             {
-            "aiRegulationDraftId": 0,
-            "title": section.title,
-            "description": section.description,
-            "actionPlan": section.action_plan,
-            "sanctions": section.sanctions,
-            "requiresRegulatoryReturns": str(section.requires_regulatory_returns),
-            "frequencyOfReturns": section.frequency_of_returns or "NA",
-            "units": ','.join(section.units),
-            "timelineDate": format_date_as_string(section.timeline_date or regulation.release_date)
+                "aiRegulationDraftId": 0,
+                "title": section.title,
+                "description": section.description,
+                "actionPlan": section.action_plan,
+                "sanctions": section.sanctions,
+                "requiresRegulatoryReturns": str(section.requires_regulatory_returns),
+                "frequencyOfReturns": section.frequency_of_returns,
+                "units": ','.join(section.units),
+                "timelineDate": datetime.strptime(section.timeline_date or regulation.release_date, date_format).strftime("%Y-%m-%d")
             } for section in regulation.sections
             ]
         }
@@ -359,8 +247,7 @@ def do_main():
             RULEBOOK_API_INVENTORY_URL,
             headers={
             'accept': 'text/plain',
-            #'Authorization': f'Bearer {token}',
-            'x-api-key': RULEBOOK_API_KEY,
+            'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json'
             },
             json=payload
@@ -368,9 +255,6 @@ def do_main():
 
         response.raise_for_status()  # Ensure the request was successful
         result = response.json()
-        if result.get("isSuccess") == True:
-            set_run_status('circulars', entry.get('id'))
-            print("Regulation successfully uploaded.")
         print(result)
         """print("Regulation successfully uploaded.")
 
@@ -395,38 +279,19 @@ def do_main():
             print(f"Timeline Date: {section.timeline_date}")
             print("------")
         print("------")"""
-
-def format_date_as_string(date):
-    if isinstance(date, datetime):
-        return date.strftime("%Y-%m-%d")
-    elif isinstance(date, str):
-        try:
-            # Try parsing as yyyy-mm-dd
-            parsed_date = datetime.strptime(date, "%Y-%m-%d")
-            return parsed_date.strftime("%Y-%m-%d")
-        except ValueError:
-            try:
-                # Try parsing as dd/mm/yyyy
-                parsed_date = datetime.strptime(date, "%d/%m/%Y")
-                return parsed_date.strftime("%Y-%m-%d")
-            except ValueError:
-                return date  # Return the original string if parsing fails
-    else:
-        return date  # Return the original value if it's neither a string nor a datetime
 def log_agent_request(status=None, error=None):
     try:
-        #token = get_token()  # Should return "Thisistokenstr"
-        #if token == None:
-        #    request_auth()
-        #    token = get_token()
+        token = get_token()  # Should return "Thisistokenstr"
+        if token == None:
+            request_auth()
+            token = get_token()
 
         # Send the API request
         response = requests.post(
             RULEBOOK_API_AI_LOG_URL,
             headers={
             'accept': 'text/plain',
-            #'Authorization': f'Bearer {token}',
-            'x-api-key': RULEBOOK_API_KEY,
+            'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json'
             },
             json={
@@ -462,8 +327,7 @@ def request_auth():
     result = response.json()["result"]
     set_auth({"expires": result["expiration"], "token": result["token"]})
 
-def run_task():
-    time = 300 # Every 5 minutes
+if __name__ == '__main__':
     log_agent_request(0)
     try:
         do_main()
@@ -471,11 +335,3 @@ def run_task():
     except Exception as e:  
         log_agent_request(2, str(e))
         print(e)
-        if isinstance(e, requests.exceptions.HTTPError) and 400 <= e.response.status_code < 500:
-            print("Client Error:", e.response.status_code, e.response.text)
-            time = 60 # Every 1 minutes
-    print(get_run_status('circulars'))
-    threading.Timer(time, run_task).start()  # Every 5 minutes
-
-if __name__ == '__main__':
-    run_task()
